@@ -1,0 +1,19 @@
+{
+  "name": "mocr",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:server": "turbo dev -F server",
+    "dev:web": "turbo dev -F web",
+    "build": "turbo run build",
+    "build:web": "turbo run build -F web",
+    "lint": "turbo run lint",
+    "lint:web": "turbo run lint -F web"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.9"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

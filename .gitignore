@@ -1,0 +1,23 @@
+# secrets & sessions
+server/.env
+server/.slooh-session.json
+server/captures/
+*.local
+
+# deps / build
+node_modules
+dist
+dist-ssr
+.direnv
+.turbo
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
