@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { CalendarClock, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { SloohTelescope } from "@/pages/Telescope"
+import type { SloohTelescope } from "@/lib/slooh"
 
 interface MissionInfo {
   scheduledMissionId: number | null

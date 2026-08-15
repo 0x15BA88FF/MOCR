@@ -1,7 +1,5 @@
-# secrets & sessions
+# secrets
 server/.env
-server/.slooh-session.json
-server/captures/
 *.local
 
 # deps / build

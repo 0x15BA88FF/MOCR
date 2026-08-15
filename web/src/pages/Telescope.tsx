@@ -5,53 +5,27 @@ import {
   useRef,
   useState,
   type PointerEvent,
-  type ReactNode,
 } from "react"
 import {
   CalendarClock,
-  Camera,
-  Eye,
-  EyeOff,
-  GripVertical,
   Images,
-  Info,
-  Loader2,
-  Maximize,
-  Minimize,
-  RotateCw,
   Rows3,
   Satellite,
   SlidersHorizontal,
-  Volume2,
-  VolumeX,
   X,
-  type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import MissionsPanel from "@/components/MissionsPanel"
 import PhotosPanel from "@/components/PhotosPanel"
 import { ObjectInfoPopover } from "@/components/ObjectInfoPopover"
-import { buildGridTiling, type TilingNode } from "@/lib/tiling"
+import { FrameGrid } from "@/components/FrameGrid"
+import { TelescopesSection } from "@/components/sidebar/TelescopeList"
+import { buildGridTiling } from "@/lib/tiling"
 import { cn } from "@/lib/utils"
-import type { SloohObject, SloohTelescope } from "@/lib/slooh"
+import type { FrameMeta } from "@/components/frame/types"
+import type { SloohTelescope } from "@/lib/slooh"
 
 export type { SloohObject, SloohTelescope } from "@/lib/slooh"
-
-interface FrameMeta {
-  url: string
-  imageID?: string
-  astroObjectID?: string
-  scheduledMissionID?: string
-  missionTitle?: string | null
-}
-
-interface MissionMeta {
-  imageID?: string | null
-  astroObjectID?: string | null
-  scheduledMissionID?: string | null
-  missionTitle?: string | null
-  serverTime?: number | null
-}
 
 function swap(array: readonly string[], a: string, b: string): string[] {
   const next = [...array]
@@ -62,633 +36,8 @@ function swap(array: readonly string[], a: string, b: string): string[] {
   return next
 }
 
-const subtreeKey = (node: TilingNode): string =>
-  node.kind === "leaf" ? node.id : node.children.map(subtreeKey).join("|")
-
 const clampInt = (value: number, min: number, max: number): number =>
   Number.isNaN(value) ? min : Math.min(max, Math.max(min, Math.round(value)))
-
-const fadeMs = 700
-
-function youtubeVideoId(urlOrId: string | null): string | null {
-  if (!urlOrId) return null
-  const s = urlOrId.trim()
-  if (/^[\w-]{11}$/.test(s)) return s
-  const m = s.match(
-    /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/,
-  )
-  return m ? m[1] : null
-}
-
-function youtubeEmbedUrl(
-  telescope: Pick<SloohTelescope, "streamCode" | "streamURL">,
-): string | null {
-  const id = youtubeVideoId(telescope.streamURL) || telescope.streamCode
-  if (!id) return null
-  return `https://www.youtube.com/embed/${id}?rel=0&autoplay=1&modestbranding=1&controls=0&showinfo=0&origin=${encodeURIComponent(window.location.origin)}`
-}
-
-const pad2 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(2, "0")
-
-const hasCoords = (o: SloohObject | null): o is SloohObject & { ra: number; dec: number } =>
-  o != null && o.ra != null && o.dec != null && (o.ra !== 0 || o.dec !== 0)
-
-function formatHms(ra: number): string {
-  const h = Math.floor(ra)
-  const m = Math.floor((ra - h) * 60)
-  return `${pad2(h)}h ${pad2(m)}m`
-}
-
-function formatDms(dec: number): string {
-  const sign = dec < 0 ? "−" : "+"
-  const a = Math.abs(dec)
-  const d = Math.floor(a)
-  const m = Math.floor((a - d) * 60)
-  return `${sign}${pad2(d)}° ${pad2(m)}′`
-}
-
-function formatArcmin(sizeArcSeconds: number | null): string | null {
-  if (sizeArcSeconds == null) return null
-  return `${(sizeArcSeconds / 60).toFixed(1).replace(/\.0$/, "")}′`
-}
-
-function compassDir(azimuth: number): string {
-  const dirs = [
-    "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-    "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
-  ]
-  return dirs[Math.round(((azimuth % 360) / 22.5)) % 16]
-}
-
-function formatAltAz(altAz: SloohObject["altAz"]): string | null {
-  if (!altAz) return null
-  return `alt ${altAz.altitude.toFixed(1)}° az ${altAz.azimuth.toFixed(1)}° (${compassDir(altAz.azimuth)})`
-}
-
-function SseImage({ src, alt }: { src: string; alt: string }) {
-  const [newest, setNewest] = useState(src)
-  const [outgoing, setOutgoing] = useState<string | null>(null)
-  const [fading, setFading] = useState(false)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    if (src === newest) return
-    setOutgoing(newest)
-    setNewest(src)
-    setFailed(false)
-  }, [src, newest])
-
-  useEffect(() => {
-    setFading(false)
-    const raf = requestAnimationFrame(() => setFading(true))
-    return () => cancelAnimationFrame(raf)
-  }, [newest])
-
-  useEffect(() => {
-    if (!outgoing) return
-    const timer = setTimeout(() => setOutgoing(null), fadeMs + 100)
-    return () => clearTimeout(timer)
-  }, [outgoing])
-
-  if (failed) {
-    return (
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-        <span className="text-xs tracking-widest text-white/40 uppercase">
-          feed unavailable
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-      {outgoing && (
-        <img
-          src={outgoing}
-          alt=""
-          draggable={false}
-          className="absolute inset-0 size-full object-cover"
-        />
-      )}
-      <img
-        src={newest}
-        alt={alt}
-        draggable={false}
-        onLoad={() => setFading(true)}
-        onError={() => setFailed(true)}
-        className={cn(
-          "absolute inset-0 size-full object-cover transition-opacity duration-[700ms] ease-in-out",
-          fading ? "opacity-100" : "opacity-0",
-        )}
-      />
-    </div>
-  )
-}
-
-function FrameContent({
-  telescope,
-  currentImgURL,
-  refreshKey = 0,
-}: {
-  telescope: SloohTelescope | null
-  currentImgURL: string | null
-  refreshKey?: number
-}) {
-  if (!telescope) {
-    return (
-      <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-        <span className="text-xs tracking-widest text-white/25 uppercase">
-          pick a telescope
-        </span>
-      </div>
-    )
-  }
-  if (!telescope.online) {
-    return (
-      <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center gap-1 bg-black/40">
-        <span className="text-sm font-semibold text-white/80">
-          {telescope.telescopeName}
-        </span>
-        <span className="text-[10px] tracking-widest text-red-300 uppercase">
-          offline
-        </span>
-      </div>
-    )
-  }
-  if (telescope.feedType === "video") {
-    const src = youtubeEmbedUrl(telescope)
-    if (!src) {
-      return (
-        <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-          <span className="text-xs tracking-widest text-white/40 uppercase">
-            video feed unavailable
-          </span>
-        </div>
-      )
-    }
-    return (
-      <iframe
-        src={src}
-        title={telescope.telescopeName}
-        className="absolute inset-0 z-0 size-full border-0"
-        allow="autoplay; fullscreen"
-      />
-    )
-  }
-  if (currentImgURL) {
-    const freshURL =
-      currentImgURL +
-      (currentImgURL.includes("?") ? "&" : "?") +
-      "_r=" +
-      refreshKey
-    return <SseImage src={freshURL} alt={telescope.telescopeName} />
-  }
-  return (
-    <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
-      <span className="animate-pulse text-xs tracking-widest text-white/40 uppercase">
-        waiting for feed…
-      </span>
-    </div>
-  )
-}
-
-interface FrameAction {
-  icon: LucideIcon
-  label: string
-  onClick?: () => void
-  onPointerDown?: (e: PointerEvent<HTMLButtonElement>) => void
-  className?: string
-}
-
-interface FrameProps {
-  id: string
-  telescope: SloohTelescope | null
-  currentImgURL: string | null
-  mission: MissionMeta | null
-  object: SloohObject | null
-  dragging: boolean
-  highlighted: boolean
-  focused: boolean
-  showHud: boolean
-  infoOpen: boolean
-  refreshKey?: number
-  audioState: "muted" | "waiting" | "playing"
-  onToggleAudio: () => void
-  onRefresh: () => void
-  onToggleInfo: () => void
-  onToggleFocus: () => void
-  onCaptured?: (customerImageId: number | null) => void
-  onPointerDown: (e: PointerEvent<HTMLElement>, id: string) => void
-  onPointerMove: (e: PointerEvent<HTMLDivElement>) => void
-  onPointerUp: () => void
-  onPointerCancel: () => void
-}
-
-function Frame({
-  id,
-  telescope,
-  currentImgURL,
-  mission,
-  object,
-  dragging,
-  highlighted: _highlighted,
-  focused,
-  showHud,
-  infoOpen,
-  refreshKey = 0,
-  audioState,
-  onToggleAudio,
-  onRefresh,
-  onToggleInfo,
-  onToggleFocus,
-  onCaptured,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-}: FrameProps) {
-  const frameRef = useRef<HTMLDivElement>(null)
-  const focusOverlayRef = useRef<HTMLDivElement>(null)
-  const [focusRadius, setFocusRadius] = useState(96)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-
-  useEffect(() => {
-    const onFullscreenChange = () =>
-      setIsFullscreen(document.fullscreenElement === frameRef.current)
-    document.addEventListener("fullscreenchange", onFullscreenChange)
-    return () =>
-      document.removeEventListener("fullscreenchange", onFullscreenChange)
-  }, [])
-
-  useEffect(() => {
-    const el = focusOverlayRef.current
-    if (!el) return
-    const update = () => {
-      const { width, height } = el.getBoundingClientRect()
-      setFocusRadius((Math.min(width, height) / 4) * 1.2)
-    }
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [focused])
-
-  const toggleFullscreen = () => {
-    const el = frameRef.current
-    if (!el) return
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {})
-    } else {
-      el.requestFullscreen().catch(() =>
-        toast.error("Fullscreen failed", {
-          description: "The browser refused to enter fullscreen.",
-        }),
-      )
-    }
-  }
-
-  const handleCapture = async () => {
-    const label = telescope?.telescopeName ?? id
-    if (!telescope || !currentImgURL) {
-      console.warn("[capture] aborted: no telescope/frame", { id, currentImgURL })
-      toast.error("Nothing to capture", {
-        description: `${label} has no still frame yet.`,
-      })
-      return
-    }
-    console.info("[capture] start", {
-      teleUniqueId: telescope.teleUniqueId,
-      telescopeId: telescope.telescopeId,
-      frame: currentImgURL,
-    })
-    try {
-      const res = await fetch("/api/captures", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teleUniqueId: telescope.teleUniqueId,
-          telescopeId: telescope.telescopeId,
-        }),
-      })
-      const raw = await res.text().catch(() => "")
-      console.info("[capture] response", { status: res.status, body: raw })
-      if (!res.ok) {
-        const data = (JSON.parse(raw) ?? null) as { error?: string } | null
-        throw new Error(data?.error ?? `HTTP ${res.status}`)
-      }
-      const data = JSON.parse(raw) as {
-        slooh: {
-          imagesAdded: number
-          explanation: string | null
-          customerImageId: number | null
-          duplicate?: boolean
-        }
-      }
-      console.info("[capture] result", data)
-      const viewButton = (customerImageId: number | null) => (
-        <button
-          type="button"
-          onClick={() => onCaptured?.(customerImageId)}
-          className="text-sky-300 underline"
-        >
-          View it in your photos
-        </button>
-      )
-      if (data.slooh.duplicate) {
-        toast.info("Already in your photos", {
-          description: (
-            <>
-              {data.slooh.explanation ?? "This image is already in your photos."}{" "}
-              {viewButton(data.slooh.customerImageId)}
-            </>
-          ),
-        })
-      } else if (data.slooh.imagesAdded > 0) {
-        const customerImageId = data.slooh.customerImageId
-        toast.success("Saved to your Slooh account", {
-          description: viewButton(customerImageId),
-        })
-      } else {
-        toast.error("Capture failed", {
-          description: data.slooh.explanation ?? "no frame available",
-        })
-      }
-    } catch (e) {
-      console.error("[capture] failed", e)
-      toast.error("Capture failed", {
-        description: e instanceof Error ? e.message : "request failed",
-      })
-    }
-   }
-
-   const hudText = useMemo(() => {
-    if (!object) return null
-    const parts: string[] = []
-    if (hasCoords(object)) {
-      parts.push(`${formatHms(object.ra)} ${formatDms(object.dec)}`)
-    }
-    const arcmin = formatArcmin(object.sizeArcSeconds)
-    if (arcmin) parts.push(arcmin)
-    const altAz = formatAltAz(object.altAz)
-    if (altAz) parts.push(altAz)
-    if (mission?.serverTime != null) {
-      const age = Math.floor(Date.now() / 1000 - mission.serverTime)
-      parts.push(age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`)
-    }
-    return parts.length > 0 ? parts.join(" · ") : null
-  }, [object, mission])
-
-  const actions: FrameAction[] = [
-    {
-      icon: GripVertical,
-      label: "Drag",
-      onPointerDown: (e) => {
-        e.stopPropagation()
-        onPointerDown(e, id)
-      },
-    },
-    {
-      icon:
-        audioState === "playing"
-          ? Volume2
-          : audioState === "waiting"
-            ? Loader2
-            : VolumeX,
-      label:
-        audioState === "playing"
-          ? "Mute audio"
-          : audioState === "waiting"
-            ? "Waiting for audio..."
-            : "Play audio",
-      onClick: onToggleAudio,
-    },
-    {
-      icon: Info,
-      label: infoOpen ? "Close object info" : "Object info",
-      onClick: onToggleInfo,
-    },
-    {
-      icon: RotateCw,
-      label: "Refresh frame",
-      onClick: onRefresh,
-    },
-    { icon: Camera, label: "Take picture", onClick: handleCapture },
-    {
-      icon: isFullscreen ? Minimize : Maximize,
-      label: isFullscreen ? "Exit fullscreen" : "Fullscreen",
-      onClick: toggleFullscreen,
-    },
-    {
-      icon: focused ? EyeOff : Eye,
-      label: focused ? "Unfocus" : "Focus",
-      onClick: onToggleFocus,
-    },
-  ]
-
-  return (
-    <div
-      ref={frameRef}
-      data-frame-id={id}
-      onPointerDown={(e) => onPointerDown(e, id)}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      className={cn(
-        "group relative min-h-0 min-w-0 flex-1 cursor-grab touch-none select-none border-2 transition-opacity active:cursor-grabbing",
-        dragging && "opacity-40",
-        audioState === "playing"
-          ? "border-emerald-500 ring-2 ring-emerald-500/50"
-          : audioState === "waiting"
-            ? "border-amber-500 ring-2 ring-amber-500/50"
-            : "border-primary ring-1 ring-primary",
-      )}
-    >
-      <FrameContent
-        telescope={telescope}
-        currentImgURL={currentImgURL}
-        refreshKey={refreshKey}
-      />
-      {focused && (
-        <div
-          ref={focusOverlayRef}
-          className="pointer-events-none absolute inset-0 z-0 bg-background"
-          style={{
-            WebkitMaskImage: `radial-gradient(circle ${focusRadius}px at 50% 50%, transparent 0, transparent ${focusRadius}px, #000 ${focusRadius + 1}px)`,
-            maskImage: `radial-gradient(circle ${focusRadius}px at 50% 50%, transparent 0, transparent ${focusRadius}px, #000 ${focusRadius + 1}px)`,
-          }}
-        >
-          <div
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 border-2 border-primary"
-            style={{
-              width: focusRadius * 2,
-              height: focusRadius * 2,
-              left: "50%",
-              top: "50%",
-              borderRadius: "9999px",
-            }}
-          />
-        </div>
-      )}
-      <div className="pointer-events-none absolute inset-x-1.5 top-1.5 z-10 flex justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-        {actions.map((action) => {
-          const Icon = action.icon
-          return (
-            <button
-              key={action.label}
-              type="button"
-              aria-label={action.label}
-              onPointerDown={(e) =>
-                action.onPointerDown ? action.onPointerDown(e) : e.stopPropagation()
-              }
-              onClick={action.onClick}
-              className={cn(
-                "pointer-events-auto flex size-7 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:text-foreground",
-                action.onPointerDown
-                  ? "cursor-grab active:cursor-grabbing"
-                  : "cursor-pointer",
-              )}
-            >
-              <Icon className={cn("size-4", Icon === Loader2 && "animate-spin")} />
-            </button>
-          )
-        })}
-      </div>
-      {telescope ? (
-        <div
-          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 max-w-[calc(100%-3rem)] border border-border/60 bg-black/70 px-1.5 py-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-          title={telescope.telescopeName}
-        >
-          <span className="block truncate text-[10px] font-medium text-white/90">
-            {telescope.telescopeName}
-          </span>
-          {mission &&
-          (mission.missionTitle ||
-            mission.astroObjectID ||
-            mission.scheduledMissionID) ? (
-            <span className="block truncate text-[9px] text-white/60">
-              {mission.missionTitle ??
-                object?.name ??
-                mission.astroObjectID ??
-                "—"}
-              {mission.scheduledMissionID &&
-              mission.scheduledMissionID !== "0" ? (
-                <span className="opacity-70"> · mission {mission.scheduledMissionID}</span>
-              ) : null}
-            </span>
-          ) : null}
-          {showHud && hudText ? (
-            <span className="block truncate font-mono text-[9px] text-sky-200/80">
-              {hudText}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function TelescopeButton({
-  t,
-  selected,
-  onToggle,
-}: {
-  t: SloohTelescope
-  selected: boolean
-  onToggle: (t: SloohTelescope) => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(t)}
-      aria-pressed={selected}
-      title={t.telescopeName}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2 border px-2 py-1.5 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/10 ring-1 ring-primary"
-          : "border-border bg-card hover:border-primary/50",
-      )}
-    >
-      <span
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          t.online ? "bg-emerald-400" : "bg-red-400",
-        )}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium text-foreground">
-          {t.telescopeName}
-        </span>
-        <span className="block truncate text-[10px] text-muted-foreground">
-          {t.obsName}
-        </span>
-      </span>
-      <span className="shrink-0 text-[9px] tracking-wider text-muted-foreground uppercase">
-        {t.feedType ?? t.status}
-      </span>
-    </button>
-  )
-}
-
-function TelescopesSection({
-  telescopes,
-  selected,
-  onToggle,
-  error,
-}: {
-  telescopes: SloohTelescope[]
-  selected: Set<string>
-  onToggle: (t: SloohTelescope) => void
-  error: string | null
-}) {
-  const online = telescopes.filter((t) => t.online)
-  const offline = telescopes.filter((t) => !t.online)
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          <Satellite className="size-3.5" />
-          Telescopes
-        </span>
-        <span className="text-[10px] text-muted-foreground">
-          {online.length}/{telescopes.length} online
-        </span>
-      </div>
-      {error ? (
-        <p className="border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-[10px] leading-relaxed text-red-300">
-          proxy unavailable ({error}). Start the server with{" "}
-          <code className="text-red-200">pnpm dev:server</code>.
-        </p>
-      ) : null}
-      {telescopes.length === 0 && !error ? (
-        <p className="px-2 py-1.5 text-[10px] text-muted-foreground">
-          loading telescopes…
-        </p>
-      ) : null}
-      {online.map((t) => (
-        <TelescopeButton
-          key={t.teleUniqueId}
-          t={t}
-          selected={selected.has(t.teleUniqueId)}
-          onToggle={onToggle}
-        />
-      ))}
-      {offline.length > 0 ? (
-        <span className="mt-1 text-[9px] tracking-widest text-muted-foreground/60 uppercase">
-          offline
-        </span>
-      ) : null}
-      {offline.map((t) => (
-        <TelescopeButton
-          key={t.teleUniqueId}
-          t={t}
-          selected={selected.has(t.teleUniqueId)}
-          onToggle={onToggle}
-        />
-      ))}
-    </div>
-  )
-}
 
 function Telescope() {
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
@@ -912,7 +261,7 @@ function Telescope() {
   const tabs: {
     id: "telescopes" | "photos" | "config" | "missions"
     label: string
-    icon: LucideIcon
+    icon: typeof Satellite
   }[] = [
     { id: "telescopes", label: "Telescopes", icon: Satellite },
     { id: "missions", label: "Missions", icon: CalendarClock },
@@ -922,64 +271,6 @@ function Telescope() {
 
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
 
-  const renderNode = (node: TilingNode): ReactNode => {
-    if (node.kind === "leaf") {
-      const telescope = telescopesById.get(node.id) ?? null
-      const meta = telescope ? latest[telescope.teleUniqueId] : undefined
-      const currentImgURL = telescope
-        ? meta?.url ?? telescope.currentImgURL ?? null
-        : null
-      const mission = telescope ? (meta ?? telescope.mission) : null
-      const object = telescope?.object ?? null
-      const isAudioActive = activeAudioTeleId === telescope?.teleUniqueId
-      const audioState: "muted" | "waiting" | "playing" = !isAudioActive
-        ? "muted"
-        : activeAudioURL
-          ? "playing"
-          : "waiting"
-      return (
-        <Frame
-          key={node.id}
-          id={node.id}
-          telescope={telescope}
-          currentImgURL={currentImgURL}
-          mission={mission}
-          object={object}
-          dragging={dragId === node.id}
-          highlighted={overId === node.id}
-          focused={focusedIds[node.id] ?? false}
-          showHud={showHud}
-          infoOpen={infoId === node.id}
-          refreshKey={refreshKeys[node.id] ?? 0}
-          audioState={audioState}
-          onToggleAudio={() =>
-            telescope && toggleAudioFor(telescope.teleUniqueId)
-          }
-          onRefresh={() => handleRefreshFrame(node.id)}
-          onToggleInfo={() =>
-            setInfoId((cur) => (cur === node.id ? null : node.id))
-          }
-          onToggleFocus={() => toggleFrameFocus(node.id)}
-          onCaptured={openPhotosTo}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-        />
-      )
-    }
-
-    return (
-      <div
-        key={`${node.direction}-${subtreeKey(node)}`}
-        className="flex min-h-0 min-w-0 flex-1 gap-2"
-        style={{ flexDirection: node.direction }}
-      >
-        {node.children.map(renderNode)}
-      </div>
-    )
-  }
-
   const inputClassName =
     "h-8 w-full border border-input bg-transparent px-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
 
@@ -987,15 +278,28 @@ function Telescope() {
     <>
       <audio ref={globalAudioRef} preload="auto" className="hidden" />
       <main className="flex h-dvh w-full touch-none select-none p-4">
-        {tree ? (
-          renderNode(tree)
-        ) : (
-          <div className="flex flex-1 items-center justify-center">
-            <span className="text-sm text-muted-foreground">
-              select telescopes from the sidebar to open their feeds
-            </span>
-          </div>
-        )}
+        <FrameGrid
+          tree={tree}
+          telescopesById={telescopesById}
+          latest={latest}
+          activeAudioTeleId={activeAudioTeleId}
+          activeAudioURL={activeAudioURL}
+          dragId={dragId}
+          overId={overId}
+          focusedIds={focusedIds}
+          showHud={showHud}
+          infoId={infoId}
+          refreshKeys={refreshKeys}
+          onToggleAudio={toggleAudioFor}
+          onRefreshFrame={handleRefreshFrame}
+          onToggleInfo={(id) => setInfoId((cur) => (cur === id ? null : id))}
+          onToggleFocus={toggleFrameFocus}
+          onCaptured={openPhotosTo}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+        />
       </main>
       <button
         type="button"
@@ -1003,7 +307,7 @@ function Telescope() {
         aria-label="Toggle control sidebar"
         aria-expanded={sidebarOpen}
         className={cn(
-          "fixed bottom-4 z-20 flex size-10 items-center justify-center border-2 border-sky-300 bg-primary text-primary-foreground shadow-lg shadow-primary/40 transition-[right] duration-200 ease-linear hover:bg-primary/90 active:bg-primary/80",
+          "fixed bottom-4 z-20 flex size-10 items-center justify-center border-2 border-sky-300 bg-primary text-primary-foreground transition-[right] duration-200 ease-linear hover:bg-primary/90 active:bg-primary/80",
           sidebarOpen ? "right-[calc(20rem+1.5rem)]" : "right-4",
         )}
       >
@@ -1013,7 +317,7 @@ function Telescope() {
         aria-label="Control center"
         aria-hidden={!sidebarOpen}
         className={cn(
-          "fixed top-4 right-4 bottom-4 z-10 flex w-90 flex-col border border-border bg-card shadow-2xl shadow-black/50 transition-transform duration-200 ease-linear",
+          "fixed top-4 right-4 bottom-4 z-10 flex w-90 flex-col border border-border bg-card transition-transform duration-200 ease-linear",
           sidebarOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]",
         )}
       >

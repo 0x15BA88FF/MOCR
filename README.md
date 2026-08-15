@@ -24,6 +24,8 @@ cp server/.env.example server/.env
 | `SLOOH_EMAIL`      | Your Slooh account email                 | —       |
 | `SLOOH_PASSWD`     | Your Slooh account password              | —       |
 | `SLOOH_PROXY_PORT` | Port for the proxy server                | `8270`  |
+| `API_KEY`          | API key for API request authentication   | —       |
+| `WEB_PASSWORD`     | Password for web UI login page           | —       |
 
 ## Running locally
 
