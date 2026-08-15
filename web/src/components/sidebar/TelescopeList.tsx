@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent } from "react"
+import { useMemo, useEffect, useState, type PointerEvent } from "react"
 import { GripVertical, Satellite } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { SloohTelescope } from "@/lib/slooh"
@@ -28,8 +28,41 @@ export function TelescopesSection({
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
   const onlineCount = telescopes.filter((t) => t.online).length
 
-  const dragIndexRef = useRef<number | null>(null)
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [overIndex, setOverIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (draggingIndex === null) return
+
+    const onPointerMove = (e: globalThis.PointerEvent) => {
+      const el = document
+        .elementFromPoint(e.clientX, e.clientY)
+        ?.closest<HTMLElement>("[data-reorder-index]")
+      const idx = el ? Number(el.dataset.reorderIndex) : null
+      setOverIndex(idx)
+    }
+
+    const onPointerUp = () => {
+      const from = draggingIndex
+      const to = overIndex
+      setDraggingIndex(null)
+      setOverIndex(null)
+      if (from === null || to === null || to === from) return
+      const next = [...orderIds]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      onReorder(next)
+    }
+
+    window.addEventListener("pointermove", onPointerMove)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerUp)
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerUp)
+    }
+  }, [draggingIndex, overIndex, orderIds, onReorder])
 
   const handleGripDown = (
     e: PointerEvent<HTMLSpanElement>,
@@ -37,27 +70,9 @@ export function TelescopesSection({
   ) => {
     e.preventDefault()
     e.stopPropagation()
-    dragIndexRef.current = index
+    setDraggingIndex(index)
     setOverIndex(index)
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  }
-  const handleGripMove = (e: PointerEvent<HTMLSpanElement>) => {
-    if (dragIndexRef.current === null) return
-    const el = document
-      .elementFromPoint(e.clientX, e.clientY)
-      ?.closest<HTMLElement>("[data-reorder-index]")
-    setOverIndex(el ? Number(el.dataset.reorderIndex) : null)
-  }
-  const handleGripUp = () => {
-    const from = dragIndexRef.current
-    const to = overIndex
-    dragIndexRef.current = null
-    setOverIndex(null)
-    if (from === null || to === null || to === from) return
-    const next = [...orderIds]
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
-    onReorder(next)
   }
 
   return (
@@ -84,8 +99,8 @@ export function TelescopesSection({
       ) : null}
       {ordered.map((t, i) => {
         const selected = selectedSet.has(t.teleUniqueId)
-        const dragging = dragIndexRef.current === i
-        const isOver = overIndex === i && dragIndexRef.current !== null && !dragging
+        const dragging = draggingIndex === i
+        const isOver = overIndex === i && draggingIndex !== null && !dragging
         return (
           <button
             key={t.teleUniqueId}
@@ -108,11 +123,8 @@ export function TelescopesSection({
               tabIndex={-1}
               aria-label={`Reorder ${t.telescopeName}`}
               onPointerDown={(e) => handleGripDown(e, i)}
-              onPointerMove={handleGripMove}
-              onPointerUp={handleGripUp}
-              onPointerCancel={handleGripUp}
               onClick={(e) => e.stopPropagation()}
-              className="flex size-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
+              className="flex size-5 shrink-0 touch-none cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
             >
               <GripVertical className="size-3.5" />
             </span>
