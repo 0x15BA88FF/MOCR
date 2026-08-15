@@ -196,7 +196,7 @@ export default function PhotosPanel({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search title, telescope, observatory…"
-            className={cn(inputClassName, "pl-7")}
+            className={cn(inputClassName, "pl-8 text-xs")}
           />
         </div>
       </div>
@@ -284,52 +284,50 @@ export default function PhotosPanel({
                 className="flex max-h-full max-w-full flex-col gap-3"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">
-                      {selected.title ?? selected.filename ?? "photo"}
-                    </p>
-                    <p className="truncate text-[11px] text-muted-foreground">
-                      {[selected.displayDate, selected.displayTime, selected.telescopeName, selected.observatoryName]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openInfo(selected)}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openInfo(selected)}
+                    aria-label="Info"
+                    className="flex size-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                  >
+                    <Info className="size-3.5" />
+                  </button>
+                  {selected.downloadURL ? (
+                    <a
+                      href={selected.downloadURL}
+                      target="_blank"
+                      rel="noreferrer"
                       className="flex h-8 items-center gap-1.5 border border-border bg-card px-3 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
                     >
-                      <Info className="size-3.5" />
-                      Info
-                    </button>
-                    {selected.downloadURL ? (
-                      <a
-                        href={selected.downloadURL}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex h-8 items-center gap-1.5 border border-border bg-card px-3 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-                      >
-                        <Download className="size-3.5" />
-                        Download
-                      </a>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setSelected(null)}
-                      aria-label="Close preview"
-                      className="flex size-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
+                      <Download className="size-3.5" />
+                      Download
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setSelected(null)}
+                    aria-label="Close preview"
+                    className="flex size-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                  >
+                    <X className="size-4" />
+                  </button>
                 </div>
                 <img
                   src={selected.url}
                   alt={selected.title ?? selected.filename ?? "photo"}
-                  className="max-h-[82dvh] w-auto max-w-full border border-border object-contain shadow-2xl"
+                  className="max-h-[78dvh] w-auto max-w-full border border-border bg-background object-contain shadow-2xl"
                 />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {selected.title ?? selected.filename ?? "photo"}
+                  </p>
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {[selected.displayDate, selected.displayTime, selected.telescopeName, selected.observatoryName]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
               </div>
             </div>,
             document.body,

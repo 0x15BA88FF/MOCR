@@ -22,14 +22,13 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       .then((data: any) => {
         if (!mounted) return
         if (data.authRequired && !data.authenticated) {
+          fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
           setAuthenticated(false)
         } else {
           setAuthenticated(true)
         }
       })
-      .catch(() => {
-        // default allow if network error during status check
-      })
+      .catch(() => { })
       .finally(() => {
         if (mounted) setChecking(false)
       })
@@ -40,8 +39,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-[#0a0f1e] flex items-center justify-center text-[#dfe7f5] font-mono">
-        <Loader2 className="w-6 h-6 animate-spin text-[#7aa2ff]" />
+      <div className="min-h-dvh flex items-center justify-center font-mono">
+        <Loader2 className="w-6 h-6 animate-spin" />
       </div>
     )
   }

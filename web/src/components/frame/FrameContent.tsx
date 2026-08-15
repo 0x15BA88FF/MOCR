@@ -58,7 +58,12 @@ function FrameContent({
       (currentImgURL.includes("?") ? "&" : "?") +
       "_r=" +
       refreshKey
-    return <SseImage src={freshURL} alt={telescope.telescopeName} />
+    return (
+      <SseImage
+        src={freshURL}
+        alt={telescope.telescopeName}
+      />
+    )
   }
   return (
     <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">

@@ -108,7 +108,7 @@ export function FrameGrid({
   if (!tree) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-center text-muted-foreground">
           select telescopes from the sidebar to open their feeds
         </span>
       </div>

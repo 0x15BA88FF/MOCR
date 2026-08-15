@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type PointerEvent,
-  type WheelEvent,
   type SyntheticEvent,
 } from "react"
 import { cn } from "@/lib/utils"
@@ -160,25 +159,37 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
     setView(next)
   }
 
-  const handleWheel = (e: WheelEvent<HTMLDivElement>) => {
-    if (!baseSize) return
-    e.preventDefault()
-    e.stopPropagation()
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const cur = viewRef.current
-    const zoomFactor = Math.exp(-e.deltaY * 0.0015)
-    const nextZoom = clamp(cur.zoom * zoomFactor, MIN_ZOOM, MAX_ZOOM)
-    const ratio = nextZoom / cur.zoom
-    const pointerX = e.clientX - rect.left - rect.width / 2
-    const pointerY = e.clientY - rect.top - rect.height / 2
-    const next = clampView({
-      zoom: nextZoom,
-      offsetX: pointerX * (1 - ratio) + ratio * cur.offsetX,
-      offsetY: pointerY * (1 - ratio) + ratio * cur.offsetY,
-    })
-    setView(next)
-  }
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const handleWheelNative = (event: Event) => {
+      const e = event as unknown as globalThis.WheelEvent
+      if (!baseSizeRef.current) return
+      e.preventDefault()
+      e.stopPropagation()
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const cur = viewRef.current
+      const zoomFactor = Math.exp(-e.deltaY * 0.0015)
+      const nextZoom = clamp(cur.zoom * zoomFactor, MIN_ZOOM, MAX_ZOOM)
+      const ratio = nextZoom / cur.zoom
+      const pointerX = e.clientX - rect.left - rect.width / 2
+      const pointerY = e.clientY - rect.top - rect.height / 2
+      const next = clampView({
+        zoom: nextZoom,
+        offsetX: pointerX * (1 - ratio) + ratio * cur.offsetX,
+        offsetY: pointerY * (1 - ratio) + ratio * cur.offsetY,
+      })
+      setView(next)
+    }
+    el.addEventListener("wheel", handleWheelNative, { passive: false })
+    return () => el.removeEventListener("wheel", handleWheelNative)
+  }, [baseSize, clampView])
+
+  const baseSizeRef = useRef(baseSize)
+  useEffect(() => {
+    baseSizeRef.current = baseSize
+  }, [baseSize])
 
   const handleImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
@@ -258,7 +269,6 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
     <div
       ref={containerRef}
       className="group pointer-events-auto absolute inset-0 z-0 overflow-hidden bg-black"
-      onWheel={handleWheel}
       onPointerMove={handlePanPointerMove}
       onPointerUp={handlePanPointerUp}
       onPointerCancel={handlePanPointerCancel}

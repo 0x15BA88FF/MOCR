@@ -20,7 +20,12 @@ import PhotosPanel from "@/components/PhotosPanel"
 import { ObjectInfoPopover } from "@/components/ObjectInfoPopover"
 import { FrameGrid } from "@/components/FrameGrid"
 import { TelescopesSection } from "@/components/sidebar/TelescopeList"
-import { buildGridTiling } from "@/lib/tiling"
+import {
+  buildGridTiling,
+  chunkWorkspaces,
+  resolveFillDirection,
+  type GridLayout,
+} from "@/lib/tiling"
 import { cn } from "@/lib/utils"
 import type { FrameMeta } from "@/components/frame/types"
 import type { SloohTelescope } from "@/lib/slooh"
@@ -48,13 +53,63 @@ function Telescope() {
       return []
     }
   })
-  const [maxRows, setMaxRows] = useState<number>(() => {
+  // orderIds is the master layout order of every telescope. The grid only shows
+  // the selected ones, but deselecting keeps an item in this list so it returns
+  // to its position when selected again.
+  const [orderIds, setOrderIds] = useState<string[]>(() => {
     try {
-      const raw = localStorage.getItem("mocr_max_rows")
-      return raw ? Number(raw) : 2
+      const raw = localStorage.getItem("mocr_order_ids")
+      return raw ? JSON.parse(raw) : []
     } catch {
-      return 2
+      return []
     }
+  })
+  const readInt = (key: string, fallback: number): number => {
+    try {
+      const raw = localStorage.getItem(key)
+      return raw ? Number(raw) : fallback
+    } catch {
+      return fallback
+    }
+  }
+  const readBool = (key: string, fallback: boolean): boolean => {
+    try {
+      const raw = localStorage.getItem(key)
+      return raw ? raw === "true" : fallback
+    } catch {
+      return fallback
+    }
+  }
+  const detectPortrait = (): boolean => {
+    if (typeof window === "undefined" || !window.matchMedia) return false
+    return window.matchMedia("(orientation: portrait)").matches
+  }
+  const [maxRows, setMaxRows] = useState<number>(() =>
+    readInt("mocr_max_rows", detectPortrait() ? 3 : 2),
+  )
+  const [maxCols, setMaxCols] = useState<number>(() =>
+    readInt("mocr_max_cols", detectPortrait() ? 2 : 3),
+  )
+  // gridCustom is false until the user edits the grid, so the layout's proper
+  // default (rows/cols inverted for portrait) keeps applying across rotations.
+  const [gridCustom, setGridCustom] = useState<boolean>(() =>
+    readBool("mocr_grid_custom", false),
+  )
+  const [activeWorkspace, setActiveWorkspace] = useState<number>(() =>
+    readInt("mocr_active_workspace", 0),
+  )
+  const [layout, setLayout] = useState<GridLayout>(() => {
+    try {
+      const raw = localStorage.getItem("mocr_layout")
+      if (raw === "landscape" || raw === "portrait" || raw === "auto") {
+        return raw
+      }
+    } catch {}
+    return "auto"
+  })
+  const [isPortrait, setIsPortrait] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false
+    return window.matchMedia("(orientation: portrait)").matches
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<
@@ -111,18 +166,118 @@ function Telescope() {
 
   useEffect(() => {
     try {
+      localStorage.setItem("mocr_order_ids", JSON.stringify(orderIds))
+    } catch {}
+  }, [orderIds])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mocr_active_workspace", String(activeWorkspace))
+    } catch {}
+  }, [activeWorkspace])
+
+  useEffect(() => {
+    try {
       localStorage.setItem("mocr_max_rows", String(maxRows))
     } catch {}
   }, [maxRows])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mocr_max_cols", String(maxCols))
+    } catch {}
+  }, [maxCols])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mocr_grid_custom", String(gridCustom))
+    } catch {}
+  }, [gridCustom])
+
+  useEffect(() => {
+    if (gridCustom) return
+    setMaxRows(isPortrait ? 3 : 2)
+    setMaxCols(isPortrait ? 2 : 3)
+  }, [isPortrait, gridCustom])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mocr_layout", layout)
+    } catch {}
+  }, [layout])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return
+    const mql = window.matchMedia("(orientation: portrait)")
+    const update = () => setIsPortrait(mql.matches)
+    update()
+    mql.addEventListener?.("change", update)
+    return () => mql.removeEventListener?.("change", update)
+  }, [])
 
   const telescopesById = useMemo(
     () => new Map(telescopes.map((t) => [t.teleUniqueId, t])),
     [telescopes],
   )
 
+  // Keep the master order in sync with the telescopes that actually exist: drop
+  // vanished ids and append newly-seen ones (seeding from current selection the
+  // first time so an existing layout order is preserved on upgrade).
+  const selectedIdsRef = useRef(selectedIds)
+  selectedIdsRef.current = selectedIds
+  useEffect(() => {
+    if (telescopes.length === 0) return
+    setOrderIds((prev) => {
+      const ids = telescopes.map((t) => t.teleUniqueId)
+      const present = new Set(ids)
+      const base =
+        prev.length > 0
+          ? [...prev]
+          : [
+              ...selectedIdsRef.current,
+              ...ids.filter((id) => !selectedIdsRef.current.includes(id)),
+            ]
+      const filtered = base.filter((id) => present.has(id))
+      const kept = new Set(filtered)
+      const appended = ids.filter((id) => !kept.has(id))
+      return [...filtered, ...appended]
+    })
+  }, [telescopes])
+
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const orderedSelectedIds = useMemo(
+    () => orderIds.filter((id) => selectedSet.has(id)),
+    [orderIds, selectedSet],
+  )
+
+  const workspaces = useMemo(
+    () => chunkWorkspaces(orderedSelectedIds, maxRows, maxCols),
+    [orderedSelectedIds, maxRows, maxCols],
+  )
+  const activeWorkspaceSafe = Math.min(
+    activeWorkspace,
+    Math.max(0, workspaces.length - 1),
+  )
+  const activeIds = useMemo(
+    () => workspaces[activeWorkspaceSafe] ?? [],
+    [workspaces, activeWorkspaceSafe],
+  )
+
+  useEffect(() => {
+    if (activeWorkspace > workspaces.length - 1) {
+      setActiveWorkspace(Math.max(0, workspaces.length - 1))
+    }
+  }, [workspaces.length, activeWorkspace])
+
   const tree = useMemo(
-    () => buildGridTiling(selectedIds, maxRows),
-    [selectedIds, maxRows],
+    () =>
+      buildGridTiling(
+        activeIds,
+        maxRows,
+        maxCols,
+        resolveFillDirection(layout, isPortrait),
+      ),
+    [activeIds, maxRows, maxCols, layout, isPortrait],
   )
 
   const loadTelescopes = useCallback(async () => {
@@ -225,7 +380,7 @@ function Telescope() {
     const { id } = dragRef.current ?? {}
     dragRef.current = null
     if (id && overId && overId !== id) {
-      setSelectedIds((prev) => swap(prev, id, overId))
+      setOrderIds((prev) => swap(prev, id, overId))
     }
     setDragId(null)
     setOverId(null)
@@ -238,13 +393,13 @@ function Telescope() {
   }
 
   const toggleTelescope = (t: SloohTelescope) => {
+    const id = t.teleUniqueId
     setSelectedIds((prev) => {
-      const removing = prev.includes(t.teleUniqueId)
-      if (removing && infoId === t.teleUniqueId) setInfoId(null)
-      return removing
-        ? prev.filter((id) => id !== t.teleUniqueId)
-        : [...prev, t.teleUniqueId]
+      const removing = prev.includes(id)
+      if (removing && infoId === id) setInfoId(null)
+      return removing ? prev.filter((x) => x !== id) : [...prev, id]
     })
+    setOrderIds((prev) => (prev.includes(id) ? prev : [...prev, id]))
   }
 
   const [focusedIds, setFocusedIds] = useState<Record<string, boolean>>({})
@@ -269,8 +424,6 @@ function Telescope() {
     { id: "config", label: "Config", icon: Rows3 },
   ]
 
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
-
   const inputClassName =
     "h-8 w-full border border-input bg-transparent px-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
 
@@ -278,28 +431,53 @@ function Telescope() {
     <>
       <audio ref={globalAudioRef} preload="auto" className="hidden" />
       <main className="flex h-dvh w-full touch-none select-none p-4">
-        <FrameGrid
-          tree={tree}
-          telescopesById={telescopesById}
-          latest={latest}
-          activeAudioTeleId={activeAudioTeleId}
-          activeAudioURL={activeAudioURL}
-          dragId={dragId}
-          overId={overId}
-          focusedIds={focusedIds}
-          showHud={showHud}
-          infoId={infoId}
-          refreshKeys={refreshKeys}
-          onToggleAudio={toggleAudioFor}
-          onRefreshFrame={handleRefreshFrame}
-          onToggleInfo={(id) => setInfoId((cur) => (cur === id ? null : id))}
-          onToggleFocus={toggleFrameFocus}
-          onCaptured={openPhotosTo}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
-        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <FrameGrid
+                tree={tree}
+                telescopesById={telescopesById}
+                latest={latest}
+                activeAudioTeleId={activeAudioTeleId}
+                activeAudioURL={activeAudioURL}
+                dragId={dragId}
+                overId={overId}
+                focusedIds={focusedIds}
+                showHud={showHud}
+                infoId={infoId}
+                refreshKeys={refreshKeys}
+                onToggleAudio={toggleAudioFor}
+                onRefreshFrame={handleRefreshFrame}
+                onToggleInfo={(id) => setInfoId((cur) => (cur === id ? null : id))}
+                onToggleFocus={toggleFrameFocus}
+                onCaptured={openPhotosTo}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
+              />
+          </div>
+          {workspaces.length > 1 ? (
+            <div className="flex shrink-0 justify-center gap-1.5">
+              {workspaces.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveWorkspace(i)}
+                  aria-label={`Workspace ${i + 1}`}
+                  aria-current={i === activeWorkspaceSafe}
+                  className={cn(
+                    "flex size-8 items-center justify-center border text-xs font-semibold transition-colors",
+                    i === activeWorkspaceSafe
+                      ? "border-primary bg-primary/20 text-primary"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </main>
       <button
         type="button"
@@ -307,8 +485,7 @@ function Telescope() {
         aria-label="Toggle control sidebar"
         aria-expanded={sidebarOpen}
         className={cn(
-          "fixed bottom-4 z-20 flex size-10 items-center justify-center border-2 border-sky-300 bg-primary text-primary-foreground transition-[right] duration-200 ease-linear hover:bg-primary/90 active:bg-primary/80",
-          sidebarOpen ? "right-[calc(20rem+1.5rem)]" : "right-4",
+          "fixed bottom-4 right-4 z-0 flex size-10 items-center justify-center border-2 border-sky-300 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
         )}
       >
         <SlidersHorizontal className="size-4.5" />
@@ -317,7 +494,7 @@ function Telescope() {
         aria-label="Control center"
         aria-hidden={!sidebarOpen}
         className={cn(
-          "fixed top-4 right-4 bottom-4 z-10 flex w-90 flex-col border border-border bg-card transition-transform duration-200 ease-linear",
+          "fixed top-4 right-4 bottom-4 z-10 flex w-90 max-sm:left-4 max-sm:w-auto flex-col border border-border bg-card transition-transform duration-200 ease-linear",
           sidebarOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]",
         )}
       >
@@ -361,8 +538,10 @@ function Telescope() {
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
               <TelescopesSection
                 telescopes={telescopes}
-                selected={selectedSet}
+                orderIds={orderIds}
+                selectedIds={selectedIds}
                 onToggle={toggleTelescope}
+                onReorder={(ids) => setOrderIds(ids)}
                 error={telescopeError}
               />
             </div>
@@ -376,17 +555,48 @@ function Telescope() {
           {activeTab === "missions" ? (
             <MissionsPanel
               active={sidebarOpen && activeTab === "missions"}
-              telescopes={selectedIds
+              telescopes={orderedSelectedIds
                 .map((id) => telescopesById.get(id))
                 .filter((t): t is SloohTelescope => t != null)}
             />
           ) : null}
           {activeTab === "config" ? (
             <div className="flex flex-col gap-4 px-3 pb-3">
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-3">
                 <div className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                   Grid
                 </div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Rows3 className="size-3.5" />
+                  Layout
+                </label>
+                <div className="flex gap-1">
+                  {(
+                    [
+                      { value: "auto", label: "Auto" },
+                      { value: "landscape", label: "Landscape" },
+                      { value: "portrait", label: "Portrait" },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setLayout(opt.value)}
+                      aria-pressed={layout === opt.value}
+                      className={cn(
+                        "h-8 flex-1 border text-xs font-medium uppercase tracking-wider transition-colors",
+                        layout === opt.value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] leading-snug text-muted-foreground/80">
+                  Auto uses rows-first on portrait devices, columns-first otherwise.
+                </p>
                 <label
                   htmlFor="max-rows"
                   className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
@@ -400,11 +610,35 @@ function Telescope() {
                   min={1}
                   max={16}
                   value={maxRows}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setGridCustom(true)
                     setMaxRows(clampInt(e.target.valueAsNumber, 1, 16))
-                  }
+                  }}
                   className={inputClassName}
                 />
+                <label
+                  htmlFor="max-cols"
+                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+                >
+                  <Rows3 className="size-3.5" />
+                  Max columns
+                </label>
+                <input
+                  id="max-cols"
+                  type="number"
+                  min={1}
+                  max={16}
+                  value={maxCols}
+                  onChange={(e) => {
+                    setGridCustom(true)
+                    setMaxCols(clampInt(e.target.valueAsNumber, 1, 16))
+                  }}
+                  className={inputClassName}
+                />
+                <p className="text-[11px] leading-snug text-muted-foreground/80">
+                  Defaults follow the device: 2×3 on desktop, 3×2 in portrait.
+                  When a workspace overflows, frames split into numbered pages.
+                </p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <div className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">

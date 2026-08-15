@@ -1,63 +1,65 @@
-import { Satellite } from "lucide-react"
+import { useMemo, useRef, useState, type PointerEvent } from "react"
+import { GripVertical, Satellite } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { SloohTelescope } from "@/lib/slooh"
 
-function TelescopeButton({
-  t,
-  selected,
-  onToggle,
-}: {
-  t: SloohTelescope
-  selected: boolean
-  onToggle: (t: SloohTelescope) => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(t)}
-      aria-pressed={selected}
-      title={t.telescopeName}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2 border px-2 py-1.5 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/10 ring-1 ring-primary"
-          : "border-border bg-card hover:border-primary/50",
-      )}
-    >
-      <span
-        className={cn(
-          "size-2 shrink-0 rounded-full",
-          t.online ? "bg-emerald-400" : "bg-red-400",
-        )}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium text-foreground">
-          {t.telescopeName}
-        </span>
-        <span className="block truncate text-[10px] text-muted-foreground">
-          {t.obsName}
-        </span>
-      </span>
-      <span className="shrink-0 text-[9px] tracking-wider text-muted-foreground uppercase">
-        {t.feedType ?? t.status}
-      </span>
-    </button>
-  )
-}
-
 export function TelescopesSection({
   telescopes,
-  selected,
+  orderIds,
+  selectedIds,
   onToggle,
+  onReorder,
   error,
 }: {
   telescopes: SloohTelescope[]
-  selected: Set<string>
+  orderIds: string[]
+  selectedIds: string[]
   onToggle: (t: SloohTelescope) => void
+  onReorder: (ids: string[]) => void
   error: string | null
 }) {
-  const online = telescopes.filter((t) => t.online)
-  const offline = telescopes.filter((t) => !t.online)
+  const byId = useMemo(
+    () => new Map(telescopes.map((t) => [t.teleUniqueId, t])),
+    [telescopes],
+  )
+  const ordered = orderIds
+    .map((id) => byId.get(id))
+    .filter((t): t is SloohTelescope => Boolean(t))
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds])
+  const onlineCount = telescopes.filter((t) => t.online).length
+
+  const dragIndexRef = useRef<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
+
+  const handleGripDown = (
+    e: PointerEvent<HTMLSpanElement>,
+    index: number,
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragIndexRef.current = index
+    setOverIndex(index)
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const handleGripMove = (e: PointerEvent<HTMLSpanElement>) => {
+    if (dragIndexRef.current === null) return
+    const el = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>("[data-reorder-index]")
+    setOverIndex(el ? Number(el.dataset.reorderIndex) : null)
+  }
+  const handleGripUp = () => {
+    const from = dragIndexRef.current
+    const to = overIndex
+    dragIndexRef.current = null
+    setOverIndex(null)
+    if (from === null || to === null || to === from) return
+    const next = [...orderIds]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    onReorder(next)
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
@@ -66,7 +68,7 @@ export function TelescopesSection({
           Telescopes
         </span>
         <span className="text-[10px] text-muted-foreground">
-          {online.length}/{telescopes.length} online
+          {onlineCount}/{telescopes.length} online
         </span>
       </div>
       {error ? (
@@ -80,27 +82,60 @@ export function TelescopesSection({
           loading telescopes…
         </p>
       ) : null}
-      {online.map((t) => (
-        <TelescopeButton
-          key={t.teleUniqueId}
-          t={t}
-          selected={selected.has(t.teleUniqueId)}
-          onToggle={onToggle}
-        />
-      ))}
-      {offline.length > 0 ? (
-        <span className="mt-1 text-[9px] tracking-widest text-muted-foreground/60 uppercase">
-          offline
-        </span>
-      ) : null}
-      {offline.map((t) => (
-        <TelescopeButton
-          key={t.teleUniqueId}
-          t={t}
-          selected={selected.has(t.teleUniqueId)}
-          onToggle={onToggle}
-        />
-      ))}
+      {ordered.map((t, i) => {
+        const selected = selectedSet.has(t.teleUniqueId)
+        const dragging = dragIndexRef.current === i
+        const isOver = overIndex === i && dragIndexRef.current !== null && !dragging
+        return (
+          <button
+            key={t.teleUniqueId}
+            type="button"
+            data-reorder-index={i}
+            onClick={() => onToggle(t)}
+            aria-pressed={selected}
+            title={t.telescopeName}
+            className={cn(
+              "flex w-full cursor-pointer items-center gap-2 border px-2 py-1.5 text-left transition-colors",
+              selected
+                ? "border-primary bg-primary/10 ring-1 ring-primary"
+                : "border-border bg-card hover:border-primary/50",
+              dragging && "opacity-50",
+              isOver && "border-sky-300",
+            )}
+          >
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label={`Reorder ${t.telescopeName}`}
+              onPointerDown={(e) => handleGripDown(e, i)}
+              onPointerMove={handleGripMove}
+              onPointerUp={handleGripUp}
+              onPointerCancel={handleGripUp}
+              onClick={(e) => e.stopPropagation()}
+              className="flex size-5 shrink-0 cursor-grab items-center justify-center text-muted-foreground active:cursor-grabbing"
+            >
+              <GripVertical className="size-3.5" />
+            </span>
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                t.online ? "bg-emerald-400" : "bg-red-400",
+              )}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-foreground">
+                {t.telescopeName}
+              </span>
+              <span className="block truncate text-[10px] text-muted-foreground">
+                {t.obsName}
+              </span>
+            </span>
+            <span className="shrink-0 text-[9px] tracking-wider text-muted-foreground uppercase">
+              {selected ? "shown" : t.feedType ?? t.status}
+            </span>
+          </button>
+        )
+      })}
     </div>
   )
 }

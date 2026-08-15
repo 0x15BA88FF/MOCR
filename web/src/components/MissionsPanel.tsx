@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { CalendarClock, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { SloohTelescope } from "@/lib/slooh"
 
@@ -98,13 +98,6 @@ export default function MissionsPanel({
             upcoming missions.
           </p>
         ) : null}
-        {!error && telescopes.length > 0 && loading && Object.keys(data).length === 0 ? (
-          <div className="flex flex-col gap-2">
-            {telescopes.map((t) => (
-              <div key={t.teleUniqueId} className="h-24 animate-pulse border border-border bg-card" />
-            ))}
-          </div>
-        ) : null}
         {telescopes.map((t) => {
           const m = data[t.teleUniqueId]
           if (!m) return null
@@ -202,20 +195,15 @@ export default function MissionsPanel({
             </div>
           )
         })}
-        {!error && telescopes.length > 0 && !loading && Object.keys(data).length > 0 ? (
-          <p className="flex items-center justify-center gap-1.5 py-2 text-[9px] tracking-wider text-muted-foreground/60 uppercase">
-            <CalendarClock className="size-3" />
-            refreshes automatically
-          </p>
-        ) : null}
-        {!error && telescopes.length > 0 && !loading ? (
+        {!error && telescopes.length > 0 ? (
           <button
             type="button"
             onClick={fetchMissions}
-            className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 border border-border bg-card text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            disabled={loading}
+            className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 border border-border bg-card text-xs text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:cursor-default disabled:opacity-60 disabled:hover:border-border disabled:hover:text-muted-foreground"
           >
-            <RefreshCw className="size-3.5" />
-            Refresh
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            {loading ? "Refreshing…" : "Refresh"}
           </button>
         ) : null}
       </div>

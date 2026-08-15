@@ -263,7 +263,7 @@ function Frame({
             move: "border-amber-400 bg-amber-500 text-slate-950",
           }
         : {
-            frame: "border-primary ring-1 ring-primary",
+            frame: "border-border hover:border-primary hover:ring-1 hover:ring-primary",
             move: "border-primary bg-primary text-primary-foreground",
           }
 
@@ -321,7 +321,7 @@ function Frame({
           />
         </div>
       )}
-      <div className="pointer-events-none absolute inset-x-1.5 top-1.5 z-10 flex justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <div className="pointer-events-none absolute right-1.5 top-1.5 z-10 flex max-w-[calc(100%-3rem)] flex-wrap justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
         {actions.map((action) => {
           const Icon = action.icon
           return (
