@@ -39,6 +39,8 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
     startY: number
     startView: ViewState
   } | null>(null)
+  const pointersRef = useRef<Map<number, { clientX: number; clientY: number }>>(new Map())
+  const pinchRef = useRef<{ startDist: number; prevDist: number } | null>(null)
   const minimapGestureRef = useRef<{
     pointerId: number
   } | null>(null)
@@ -201,32 +203,86 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
     setFading(true)
   }
 
-  const handlePanPointerDown = (e: PointerEvent<HTMLElement>) => {
+  const handlePointerDown = (e: PointerEvent<HTMLElement>) => {
     if (e.button !== 0 || !baseSize) return
     e.preventDefault()
     e.stopPropagation()
-    e.currentTarget.setPointerCapture(e.pointerId)
-    beginPan(e.pointerId, e.clientX, e.clientY)
+    pointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY })
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {}
+
+    if (pointersRef.current.size === 2) {
+      panGestureRef.current = null
+      setPanning(false)
+      const pts = Array.from(pointersRef.current.values())
+      const dist = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY)
+      pinchRef.current = { startDist: dist, prevDist: dist }
+    } else if (pointersRef.current.size === 1) {
+      beginPan(e.pointerId, e.clientX, e.clientY)
+    }
   }
 
-  const handlePanPointerMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!panGestureRef.current || panGestureRef.current.pointerId !== e.pointerId) return
-    e.preventDefault()
-    e.stopPropagation()
-    updatePan(e.clientX, e.clientY)
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(e.pointerId)) return
+    pointersRef.current.set(e.pointerId, { clientX: e.clientX, clientY: e.clientY })
+
+    if (pointersRef.current.size >= 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      const pts = Array.from(pointersRef.current.values())
+      const currDist = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY)
+      const pinch = pinchRef.current
+      if (!pinch || !baseSize) return
+
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const centerX = (pts[0].clientX + pts[1].clientX) / 2
+      const centerY = (pts[0].clientY + pts[1].clientY) / 2
+
+      const zoomFactor = currDist / (pinch.prevDist || currDist)
+      pinch.prevDist = currDist
+
+      const cur = viewRef.current
+      const nextZoom = clamp(cur.zoom * zoomFactor, MIN_ZOOM, MAX_ZOOM)
+      const ratio = nextZoom / cur.zoom
+      const pointerX = centerX - rect.left - rect.width / 2
+      const pointerY = centerY - rect.top - rect.height / 2
+
+      const next = clampView({
+        zoom: nextZoom,
+        offsetX: pointerX * (1 - ratio) + ratio * cur.offsetX,
+        offsetY: pointerY * (1 - ratio) + ratio * cur.offsetY,
+      })
+      setView(next)
+    } else if (pointersRef.current.size === 1) {
+      if (!panGestureRef.current || panGestureRef.current.pointerId !== e.pointerId) return
+      e.preventDefault()
+      e.stopPropagation()
+      updatePan(e.clientX, e.clientY)
+    }
   }
 
-  const handlePanPointerUp = (e: PointerEvent<HTMLDivElement>) => {
-    if (!panGestureRef.current || panGestureRef.current.pointerId !== e.pointerId) return
-    e.preventDefault()
-    e.stopPropagation()
-    endPan()
+  const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null
+    }
+    if (pointersRef.current.size === 1) {
+      const entry = Array.from(pointersRef.current.entries())[0]
+      if (entry) {
+        const [remainingId, pt] = entry
+        beginPan(remainingId, pt.clientX, pt.clientY)
+      }
+    } else {
+      endPan()
+    }
   }
 
-  const handlePanPointerCancel = (e: PointerEvent<HTMLDivElement>) => {
-    if (!panGestureRef.current || panGestureRef.current.pointerId !== e.pointerId) return
-    e.preventDefault()
-    e.stopPropagation()
+  const handlePointerCancel = (e: PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(e.pointerId)
+    pinchRef.current = null
     endPan()
   }
 
@@ -269,9 +325,10 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
     <div
       ref={containerRef}
       className="group pointer-events-auto absolute inset-0 z-0 overflow-hidden bg-black"
-      onPointerMove={handlePanPointerMove}
-      onPointerUp={handlePanPointerUp}
-      onPointerCancel={handlePanPointerCancel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
       {outgoing && (
         <img
@@ -306,7 +363,6 @@ function SseImage({ src, alt }: { src: string; alt: string }) {
                 objectFit: "contain",
               }
         }
-        onPointerDown={handlePanPointerDown}
       />
       {baseSize ? (
         <div
