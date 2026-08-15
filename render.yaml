@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: mocr
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pnpm install && pnpm build
+    startCommand: node server/index.mjs
+    healthCheckPath: /api/auth/status
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SLOOH_EMAIL
+        sync: false
+      - key: SLOOH_PASSWD
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: WEB_PASSWORD
+        sync: false

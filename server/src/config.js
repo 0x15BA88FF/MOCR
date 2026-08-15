@@ -44,7 +44,9 @@ export function loadEnv() {
 }
 loadEnv();
 
-export const PORT = Number(process.env.SLOOH_PROXY_PORT || 8270);
+export const PORT = Number(
+  process.env.PORT || process.env.SLOOH_PROXY_PORT || 8270,
+);
 export const API_KEY = process.env.API_KEY || "";
 export const WEB_PASSWORD = process.env.WEB_PASSWORD || process.env.API_KEY || "";
 export const AUTH_ENABLED = Boolean(WEB_PASSWORD || API_KEY);
