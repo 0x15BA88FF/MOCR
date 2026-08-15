@@ -85,6 +85,18 @@ function Frame({
   const focusOverlayRef = useRef<HTMLDivElement>(null)
   const [focusRadius, setFocusRadius] = useState(96)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    if (!active) return
+    const onClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (frameRef.current && !frameRef.current.contains(e.target as Node)) {
+        setActive(false)
+      }
+    }
+    document.addEventListener("pointerdown", onClickOutside)
+    return () => document.removeEventListener("pointerdown", onClickOutside)
+  }, [active])
 
   useEffect(() => {
     const onFullscreenChange = () =>
@@ -271,6 +283,7 @@ function Frame({
     <div
       ref={frameRef}
       data-frame-id={id}
+      onClick={() => setActive((v) => !v)}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
@@ -293,8 +306,12 @@ function Frame({
           e.stopPropagation()
           onPointerDown(e, id)
         }}
+        onClick={(e) => e.stopPropagation()}
         className={cn(
-          "pointer-events-none absolute -left-[2px] -top-[2px] z-20 flex h-9 items-center gap-1.5 border-2 px-2.5 text-[10px] font-semibold tracking-[0.32em] uppercase opacity-0 transition-[opacity,transform] duration-200 group-hover:pointer-events-auto group-hover:opacity-100 cursor-grab active:cursor-grabbing",
+          "absolute -left-[2px] -top-[2px] z-20 flex h-9 items-center gap-1.5 border-2 px-2.5 text-[10px] font-semibold tracking-[0.32em] uppercase transition-[opacity,transform] duration-200 cursor-grab active:cursor-grabbing",
+          active
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto",
           frameTone.move,
         )}
       >
@@ -321,7 +338,14 @@ function Frame({
           />
         </div>
       )}
-      <div className="pointer-events-none absolute right-1.5 top-1.5 z-10 flex max-w-[calc(100%-3rem)] flex-wrap justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <div
+        className={cn(
+          "absolute right-1.5 top-1.5 z-10 flex max-w-[calc(100%-3rem)] flex-wrap justify-end gap-1 transition-opacity duration-200",
+          active
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto",
+        )}
+      >
         {actions.map((action) => {
           const Icon = action.icon
           return (
@@ -332,7 +356,10 @@ function Frame({
               onPointerDown={(e) =>
                 action.onPointerDown ? action.onPointerDown(e) : e.stopPropagation()
               }
-              onClick={action.onClick}
+              onClick={(e) => {
+                e.stopPropagation()
+                action.onClick?.()
+              }}
               className={cn(
                 "pointer-events-auto flex size-7 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:text-foreground",
                 action.onPointerDown
@@ -347,7 +374,10 @@ function Frame({
       </div>
       {telescope ? (
         <div
-          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 max-w-[calc(100%-3rem)] border border-border/60 bg-black/70 px-1.5 py-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          className={cn(
+            "absolute bottom-1.5 left-1.5 z-10 max-w-[calc(100%-3rem)] border border-border/60 bg-black/70 px-1.5 py-0.5 transition-opacity duration-200",
+            active ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
           title={telescope.telescopeName}
         >
           <span className="block truncate text-[10px] font-medium text-white/90">
