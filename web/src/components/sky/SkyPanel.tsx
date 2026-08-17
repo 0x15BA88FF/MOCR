@@ -1,4 +1,4 @@
-import { Camera, Map as MapIcon, Moon, Radio, Sun } from "lucide-react"
+import { Moon, Radio } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePolling } from "@/lib/usePolling"
 import type { SloohTelescope } from "@/lib/slooh"
