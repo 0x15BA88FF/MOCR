@@ -19,6 +19,10 @@ function mapCurrentMission(m) {
     missionStart: m.missionStart ?? null,
     durationSec: m.durationSec ?? null,
     expires: m.expires ?? null,
+    astroObjectID:
+      m.astroObjectID != null && Number(m.astroObjectID) !== 0
+        ? String(m.astroObjectID)
+        : null,
   };
 }
 

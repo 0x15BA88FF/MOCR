@@ -35,6 +35,50 @@ function PhotoGridSkeleton() {
   )
 }
 
+function PhotoTile({
+  img,
+  highlightId,
+  onClick,
+}: {
+  img: SloohPhoto
+  highlightId: number | null
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group relative aspect-square cursor-pointer overflow-hidden border transition-colors",
+        highlightId === img.customerImageId
+          ? "border-primary ring-2 ring-primary"
+          : "border-border hover:border-primary",
+      )}
+    >
+      {img.url ? (
+        <img
+          src={img.url}
+          alt={img.title ?? img.filename ?? "photo"}
+          loading="lazy"
+          className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center bg-muted text-[10px] text-muted-foreground">
+          no image
+        </div>
+      )}
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 pt-4 pb-1 text-left">
+        <span className="block truncate text-[10px] leading-tight font-medium text-white">
+          {img.title ?? img.filename ?? "photo"}
+        </span>
+        <span className="block truncate text-[9px] text-white/70">
+          {[img.displayDate, img.telescopeName].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+    </button>
+  )
+}
+
 export default function PhotosPanel({
   active,
   onClose,
@@ -115,6 +159,17 @@ export default function PhotosPanel({
     return () => window.clearTimeout(highlightTimer.current)
   }, [active, focusKey, focusImageId, load])
 
+  // A capture taken elsewhere updates the gallery without requiring the user to
+  // reopen the tab or click "View it". Reload the first page when one lands.
+  useEffect(() => {
+    if (!active) return
+    const onCaptured = () => {
+      load(1, true)
+    }
+    window.addEventListener("mocr:photo-captured", onCaptured)
+    return () => window.removeEventListener("mocr:photo-captured", onCaptured)
+  }, [active, load])
+
   const openInfo = useCallback(async (photo: SloohPhoto) => {
     setInfo({ photo, object: null, site: null, error: null, loading: true })
     try {
@@ -174,14 +229,24 @@ export default function PhotosPanel({
 
   const hasMore = images.length < total
   const q = search.trim().toLowerCase()
+  // Stable newest-first ordering so the most recent captures show at the top.
+  // Falls back to insertion order when a timestamp is missing.
+  const ordered = useMemo(() => {
+    if (images.length === 0) return images
+    return [...images].sort((a, b) => {
+      const ta = a.imageTimestamp ? Number(a.imageTimestamp) : 0
+      const tb = b.imageTimestamp ? Number(b.imageTimestamp) : 0
+      return tb - ta
+    })
+  }, [images])
   const visible = useMemo(() => {
     if (!q)
-      return images
-    return images.filter((img) =>
+      return ordered
+    return ordered.filter((img) =>
       [img.title, img.telescopeName, img.observatoryName, img.instrumentName, img.displayDate]
         .some((v) => v != null && v.toLowerCase().includes(q)),
     )
-  }, [images, q])
+  }, [ordered, q])
 
   const inputClassName =
     "h-8 w-full border border-input bg-transparent px-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary"
@@ -217,38 +282,7 @@ export default function PhotosPanel({
         {visible.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {visible.map((img) => (
-              <button
-                key={img.customerImageId}
-                type="button"
-                onClick={() => setSelected(img)}
-                className={cn(
-                  "group relative aspect-square cursor-pointer overflow-hidden border transition-colors",
-                  highlightId === img.customerImageId
-                    ? "border-primary ring-2 ring-primary"
-                    : "border-border hover:border-primary",
-                )}
-              >
-                {img.url ? (
-                  <img
-                    src={img.url}
-                    alt={img.title ?? img.filename ?? "photo"}
-                    loading="lazy"
-                    className="size-full object-cover transition-transform duration-200 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex size-full items-center justify-center bg-muted text-[10px] text-muted-foreground">
-                    no image
-                  </div>
-                )}
-                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 pt-4 pb-1 text-left">
-                  <span className="block truncate text-[10px] leading-tight font-medium text-white">
-                    {img.title ?? img.filename ?? "photo"}
-                  </span>
-                  <span className="block truncate text-[9px] text-white/70">
-                    {[img.displayDate, img.telescopeName].filter(Boolean).join(" · ")}
-                  </span>
-                </span>
-              </button>
+              <PhotoTile key={img.customerImageId} img={img} highlightId={highlightId} onClick={() => setSelected(img)} />
             ))}
           </div>
         ) : null}

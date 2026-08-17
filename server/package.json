@@ -9,6 +9,7 @@
     "start": "node index.mjs"
   },
   "dependencies": {
-    "astronomy-engine": "^2.1.19"
+    "astronomy-engine": "^2.1.19",
+    "web-push": "^3.6.7"
   }
 }

@@ -9,6 +9,7 @@ import {
 import {
   CalendarClock,
   Images,
+  Radio,
   Rows3,
   Satellite,
   SlidersHorizontal,
@@ -20,6 +21,9 @@ import PhotosPanel from "@/components/PhotosPanel"
 import { ObjectInfoPopover } from "@/components/ObjectInfoPopover"
 import { FrameGrid } from "@/components/FrameGrid"
 import { TelescopesSection } from "@/components/sidebar/TelescopeList"
+import { AlertBell } from "@/components/alerts/AlertBell"
+import { SkyPanel } from "@/components/sky/SkyPanel"
+import { usePush } from "@/lib/usePush"
 import {
   buildGridTiling,
   chunkWorkspaces,
@@ -113,7 +117,7 @@ function Telescope() {
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<
-    "telescopes" | "photos" | "config" | "missions"
+    "telescopes" | "photos" | "config" | "missions" | "sky"
   >("telescopes")
   const [photosFocusKey, setPhotosFocusKey] = useState<number | null>(null)
   const [photosFocusImageId, setPhotosFocusImageId] = useState<number | null>(null)
@@ -129,6 +133,8 @@ function Telescope() {
   const [activeAudioTeleId, setActiveAudioTeleId] = useState<string | null>(null)
   const globalAudioRef = useRef<HTMLAudioElement | null>(null)
   const dragRef = useRef<{ id: string } | null>(null)
+  const prevMissionIdRef = useRef<string | null>(null)
+  const push = usePush()
 
   const activeAudioTelescope = telescopes.find((t) => t.teleUniqueId === activeAudioTeleId)
   const activeAudioURL = activeAudioTelescope?.object?.audioURL ?? null
@@ -337,6 +343,21 @@ function Telescope() {
               missionTitle: payload.missionTitle ?? null,
             },
           }))
+          if (
+            document.visibilityState === "hidden" &&
+            id !== prevMissionIdRef.current &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            try {
+              new Notification("MOCR · mission imagery", {
+                body: payload.missionTitle || "New imagery available",
+                icon: "/favicon.svg",
+                tag: "mocr-mission-" + id,
+              })
+            } catch {}
+          }
+          prevMissionIdRef.current = id
         }
       } catch {}
     }
@@ -414,13 +435,14 @@ function Telescope() {
   }
 
   const tabs: {
-    id: "telescopes" | "photos" | "config" | "missions"
+    id: "telescopes" | "photos" | "config" | "missions" | "sky"
     label: string
     icon: typeof Satellite
   }[] = [
     { id: "telescopes", label: "Telescopes", icon: Satellite },
     { id: "missions", label: "Missions", icon: CalendarClock },
     { id: "photos", label: "Photos", icon: Images },
+    { id: "sky", label: "Sky & Live", icon: Radio },
     { id: "config", label: "Config", icon: Rows3 },
   ]
 
@@ -456,8 +478,8 @@ function Telescope() {
                 onPointerCancel={handlePointerCancel}
               />
           </div>
-          {workspaces.length > 1 ? (
-            <div className="flex shrink-0 justify-center gap-1.5">
+          <div className="flex shrink-0 items-center justify-between gap-2">
+            <div className="flex flex-wrap justify-center gap-1.5">
               {workspaces.map((_, i) => (
                 <button
                   key={i}
@@ -476,20 +498,21 @@ function Telescope() {
                 </button>
               ))}
             </div>
-          ) : null}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((v) => !v)}
+              aria-label="Toggle control sidebar"
+              aria-expanded={sidebarOpen}
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center border text-muted-foreground transition-colors hover:text-foreground",
+                sidebarOpen && "border-primary bg-primary/10 text-primary",
+              )}
+            >
+              <SlidersHorizontal className="size-4" />
+            </button>
+          </div>
         </div>
       </main>
-      <button
-        type="button"
-        onClick={() => setSidebarOpen((v) => !v)}
-        aria-label="Toggle control sidebar"
-        aria-expanded={sidebarOpen}
-        className={cn(
-          "fixed bottom-4 right-4 z-0 flex size-10 items-center justify-center border-2 border-sky-300 bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
-        )}
-      >
-        <SlidersHorizontal className="size-4.5" />
-      </button>
       <aside
         aria-label="Control center"
         aria-hidden={!sidebarOpen}
@@ -502,14 +525,20 @@ function Telescope() {
           <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
             Control Center
           </span>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Close control sidebar"
-            className="flex size-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <AlertBell
+              enabled={sidebarOpen}
+              onOpenPhoto={(id) => openPhotosTo(id)}
+            />
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close control sidebar"
+              className="flex size-8 items-center justify-center border border-border bg-card text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-1 px-3 pb-3">
           {tabs.map((tab) => {
@@ -560,12 +589,66 @@ function Telescope() {
                 .filter((t): t is SloohTelescope => t != null)}
             />
           ) : null}
+          {activeTab === "sky" ? (
+            <SkyPanel
+              active={sidebarOpen && activeTab === "sky"}
+              telescopes={orderedSelectedIds
+                .map((id) => telescopesById.get(id))
+                .filter((t): t is SloohTelescope => t != null)}
+            />
+          ) : null}
           {activeTab === "config" ? (
-            <div className="flex flex-col gap-4 px-3 pb-3">
-              <div className="flex flex-col gap-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-scroll px-3 pb-3">
+              <div className="flex flex-col gap-1.5">
                 <div className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  Grid
+                  Push notifications
                 </div>
+                {!push.supported ? (
+                  <p className="text-[11px] leading-snug text-muted-foreground/80">
+                    Push requires a secure context (https or localhost) and a
+                    browser with service worker support.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2">
+                      {push.enabled ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={push.disable}
+                            disabled={push.busy}
+                            className="w-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-red-500/50 hover:text-red-400"
+                          >
+                            {push.busy ? "Disabling…" : "Disable"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={push.test}
+                            disabled={push.testBusy}
+                            className="w-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                          >
+                            {push.testBusy ? "Sending…" : "Send test push"}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={push.enable}
+                          disabled={push.busy}
+                          className="w-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                        >
+                          {push.busy ? "Requesting…" : "Enable push notifications"}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] leading-snug text-muted-foreground/80">
+                      Receive system notifications for new Slooh alerts while the
+                      tab is in the background.
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-col gap-3">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Rows3 className="size-3.5" />
                   Layout

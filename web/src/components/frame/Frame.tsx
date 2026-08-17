@@ -171,6 +171,11 @@ function Frame({
         }
       }
       console.info("[capture] result", data)
+      window.dispatchEvent(
+        new CustomEvent("mocr:photo-captured", {
+          detail: { customerImageId: data.slooh.customerImageId },
+        }),
+      )
       const viewButton = (customerImageId: number | null) => (
         <button
           type="button"

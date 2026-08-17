@@ -23,6 +23,32 @@ export const MISSION_SCHEDULE_TTL = 10 * 60 * 1000;
 export const snappedIdCache = new Map();
 export const SNAPPED_ID_TTL = 10 * 60 * 1000;
 
+export const missionLimitsCache = new Map();
+export const MISSION_LIMITS_TTL = 30 * 1000;
+
+export const missionDatesCache = new Map();
+export const MISSION_DATES_TTL = 10 * 60 * 1000;
+
+export const missionSlotsCache = new Map();
+export const MISSION_SLOTS_TTL = 90 * 1000;
+
+
+export const alertsCache = new Map();
+export const ALERTS_TTL = 60 * 1000;
+
+export const skyCache = new Map();
+export const SKY_TTL = 120 * 1000;
+
+export const eventsCache = new Map();
+export const EVENTS_TTL = 5 * 60 * 1000;
+
+export const livecastCache = new Map();
+export const LIVECAST_TTL = 60 * 1000;
+
+
+export const recommendCache = new Map();
+export const RECOMMEND_TTL = 5 * 60 * 1000;
+
 export function setCatalog(list) {
   catalog = list;
 }

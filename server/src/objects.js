@@ -23,6 +23,7 @@ export async function getObjectInfo(objectId) {
       magnitude: d.objectMagnitudeDisplay || d.objectMagnitude || null,
       distance: d.objectDistance || null,
       coordinatesDisplay: cleanHtml(d.objectCoordinatesDisplay),
+      iconURL: d.objectIconURL || null,
     };
     objectCache.set(objectId, { data: info, fetchedAt: Date.now() });
     return info;

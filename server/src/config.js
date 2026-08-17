@@ -50,3 +50,4 @@ export const PORT = Number(
 export const API_KEY = process.env.API_KEY || "";
 export const WEB_PASSWORD = process.env.WEB_PASSWORD || process.env.API_KEY || "";
 export const AUTH_ENABLED = Boolean(WEB_PASSWORD || API_KEY);
+export const DEBUG = process.env.DEBUG === "1" || process.env.DEBUG === "true";

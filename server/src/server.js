@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { PORT, CATALOG_REFRESH_MS, CORS, log } from "./config.js";
+import { PORT, CATALOG_REFRESH_MS, CORS, DEBUG, log } from "./config.js";
 import { isAuthenticated } from "./auth.js";
 import { serveStatic } from "./static.js";
 import { json } from "./responses.js";
@@ -9,21 +9,45 @@ import { handleImage } from "./routes/image.js";
 import { handleCaptures } from "./routes/captures.js";
 import { handlePhotos } from "./routes/photos.js";
 import { handleMissions } from "./routes/missions.js";
+import {
+  handleMissionLimits,
+  handleMissionDates,
+  handleMissionSlots,
+  handleMissionSearch,
+  handleMissionReserve,
+  handleMissionCancel,
+} from "./routes/reservation.js";
 import { handleObject, handleObjectSummary } from "./routes/object.js";
 import { handleWeather } from "./routes/weather.js";
 import { handleEvents } from "./routes/events.js";
 import { handleSseProxy } from "./routes/sseProxy.js";
+import { handleAlerts, handleAlertRead } from "./routes/alerts.js";
+import { handleSky } from "./routes/sky.js";
+import { handleEventsList, handleLivecast } from "./routes/livecast.js";
+import { handleRecommend, handleMissionJoin } from "./routes/recommends.js";
+import {
+  handlePushConfigure,
+  handlePushSubscribe,
+  handlePushUnsubscribe,
+  handlePushTest,
+  handlePushSend,
+} from "./routes/push.js";
+import { startAlertWatcher } from "./pushWatcher.js";
 import { refreshCatalog } from "./sloohClient.js";
 import { subscribers } from "./state.js";
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   const pathname = url.pathname;
+  const startedAt = Date.now();
   try {
     return handle(req, res, url, pathname);
   } catch (e) {
     log("request error:", pathname, e.message);
     json(res, 500, { error: e.message });
+  } finally {
+    if (DEBUG)
+      log("req:", req.method, pathname, Date.now() - startedAt + "ms");
   }
 });
 
@@ -82,6 +106,78 @@ function handle(req, res, url, pathname) {
     handleMissions(req, res, url, pathname);
     return;
   }
+  if (pathname === "/api/mission-limits") {
+    handleMissionLimits(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission-dates") {
+    handleMissionDates(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission-slots") {
+    handleMissionSlots(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission-search") {
+    handleMissionSearch(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission/reserve" && req.method === "POST") {
+    handleMissionReserve(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission/cancel" && req.method === "POST") {
+    handleMissionCancel(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission/join" && req.method === "POST") {
+    handleMissionJoin(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/alerts") {
+    handleAlerts(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/alerts/read" && req.method === "POST") {
+    handleAlertRead(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/sky") {
+    handleSky(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/events/upcoming") {
+    handleEventsList(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/livecast") {
+    handleLivecast(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/recommend") {
+    handleRecommend(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/push/configure") {
+    handlePushConfigure(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/push/subscribe" && req.method === "POST") {
+    handlePushSubscribe(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/push/unsubscribe" && req.method === "POST") {
+    handlePushUnsubscribe(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/push/test" && req.method === "POST") {
+    handlePushTest(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/push/send" && req.method === "POST") {
+    handlePushSend(req, res, url, pathname);
+    return;
+  }
   if (pathname === "/api/object") {
     handleObject(req, res, url, pathname);
     return;
@@ -113,4 +209,5 @@ server.listen(PORT, async () => {
   log("slooh proxy listening on http://localhost:" + PORT);
   await refreshCatalog();
   setInterval(refreshCatalog, CATALOG_REFRESH_MS);
+  startAlertWatcher();
 });

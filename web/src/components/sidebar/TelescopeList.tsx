@@ -143,7 +143,7 @@ export function TelescopesSection({
               </span>
             </span>
             <span className="shrink-0 text-[9px] tracking-wider text-muted-foreground uppercase">
-              {selected ? "shown" : t.feedType ?? t.status}
+              {t.feedType ?? t.status}
             </span>
           </button>
         )
