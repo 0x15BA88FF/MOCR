@@ -19,6 +19,11 @@ import {
 } from "./routes/reservation.js";
 import { handleObject, handleObjectSummary } from "./routes/object.js";
 import { handleWeather } from "./routes/weather.js";
+import {
+  handleSlooh1000Categories,
+  handleSlooh1000Objects,
+  handleSlooh1000SlotPreview,
+} from "./routes/slooh1000.js";
 import { handleEvents } from "./routes/events.js";
 import { handleSseProxy } from "./routes/sseProxy.js";
 import { handleAlerts, handleAlertRead } from "./routes/alerts.js";
@@ -120,6 +125,18 @@ function handle(req, res, url, pathname) {
   }
   if (pathname === "/api/mission-search") {
     handleMissionSearch(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/mission/slot-preview") {
+    handleSlooh1000SlotPreview(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/slooh1000/categories") {
+    handleSlooh1000Categories(req, res, url, pathname);
+    return;
+  }
+  if (pathname === "/api/slooh1000/objects") {
+    handleSlooh1000Objects(req, res, url, pathname);
     return;
   }
   if (pathname === "/api/mission/reserve" && req.method === "POST") {

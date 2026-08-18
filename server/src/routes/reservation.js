@@ -2,6 +2,7 @@ import { json, readBody } from "../responses.js";
 import { log } from "../config.js";
 import { api } from "../sloohClient.js";
 import { getObjectInfo } from "../objects.js";
+import { defaultObjectIcon } from "./slooh1000.js";
 import {
   telescopeById,
   missionLimitsCache,
@@ -97,24 +98,25 @@ function reservePayload(t, body) {
     callSource: body.callSource || "byTelescope",
     missionType: body.missionType || "member",
     missionStart: body.missionStart,
+    slotType: body.slotType || null,
     objectId: o.objectId,
     objectType: o.objectType || null,
     objectTitle: o.objectTitle || null,
-    objectRA: o.objectRA ?? null,
-    objectDec: o.objectDec ?? null,
-    catalog: o.catalog || null,
-    catName: o.catName || null,
-    designation: o.designation || null,
+    objectRA: o.objectRA ?? "",
+    objectDec: o.objectDec ?? "",
+    catalog: o.catalog ?? "",
+    catName: o.catName ?? "",
+    designation: o.designation ?? "",
     processingRecipe: o.processingRecipe || {},
     obsId: t.obsId,
     domeId: t.domeId,
     telescopeId: t.telescopeId,
     obsName: t.obsName,
     telescopeName: t.telescopeName,
-    objectIconURL: o.objectIconURL || null,
-    uniqueId: String(body.scheduledMissionId),
-    targetName: o.targetName || o.objectTitle || null,
-    objective: o.objective || null,
+    objectIconURL: o.objectIconURL || defaultObjectIcon(o.objectType),
+    uniqueId: body.uniqueId || String(body.scheduledMissionId),
+    targetName: o.targetName || o.objectTitle || "",
+    objective: o.objective ?? "",
   };
 }
 

@@ -71,6 +71,27 @@ objectConstellation: string | null
   objectIconURL: string | null
 }
 
+interface Slooh1000Object {
+  objectId: number | null
+  objectTitle: string | null
+  objectType: string | null
+  objectIconURL: string | null
+  scheduledMissionId: number | null
+  missionStart: number | null
+  obsId: string | null
+  domeId: number | null
+  telescopeId: string | null
+  telescopeName: string | null
+  slotType: string | null
+  missionAvailable: boolean
+}
+
+interface Slooh1000Category {
+  typeName: string
+  displayName: string
+  iconURL: string | null
+}
+
 interface RecState {
   data: SloohRecommend | null
   error: string | null
@@ -91,6 +112,16 @@ interface PlannerState {
   error: string | null
 }
 
+interface BrowseState {
+  cats: Slooh1000Category[]
+  catType: string
+  objs: Slooh1000Object[]
+  busy: boolean
+  reserveId: number | null
+  message: string | null
+  error: string | null
+}
+
 function emptyPlanner(): PlannerState {
   return {
     q: "",
@@ -100,6 +131,18 @@ function emptyPlanner(): PlannerState {
     teleUniqueId: null,
     slot: null,
     reserving: false,
+    message: null,
+    error: null,
+  }
+}
+
+function emptyBrowse(): BrowseState {
+  return {
+    cats: [],
+    catType: "",
+    objs: [],
+    busy: false,
+    reserveId: null,
     message: null,
     error: null,
   }
@@ -134,6 +177,7 @@ export default function MissionsPanel({
   const [limits, setLimits] = useState<MissionLimits | null>(null)
   const [slots, setSlots] = useState<Record<string, SlotDetailed[]>>({})
   const [planner, setPlanner] = useState<PlannerState>(emptyPlanner())
+  const [browse, setBrowse] = useState<BrowseState>(emptyBrowse())
   const [recs, setRecs] = useState<Record<string, RecState>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -371,6 +415,104 @@ export default function MissionsPanel({
     }
   }, [active, data, recs, telescopes, fetchRecommend])
 
+  const fetchBrowseCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/slooh1000/categories")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      setBrowse((b) => ({ ...b, cats: json.categories ?? [] }))
+    } catch (e) {
+      setBrowse((b) => ({
+        ...b,
+        cats: [],
+        error: e instanceof Error ? e.message : "categories failed",
+      }))
+    }
+  }, [])
+
+  const fetchBrowseObjects = useCallback(async (typeName: string) => {
+    if (!typeName) return
+    setBrowse((b) => ({ ...b, busy: true, message: null, error: null }))
+    try {
+      const res = await fetch(
+        `/api/slooh1000/objects?typeName=${encodeURIComponent(typeName)}`,
+      )
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+      setBrowse((b) => ({ ...b, objs: json.objects ?? [], busy: false }))
+    } catch (e) {
+      setBrowse((b) => ({
+        ...b,
+        objs: [],
+        busy: false,
+        error: e instanceof Error ? e.message : "objects failed",
+      }))
+    }
+  }, [])
+
+  const reserveSlooh1000 = useCallback(
+    async (o: Slooh1000Object) => {
+      if (!o.scheduledMissionId || !o.missionStart || !o.objectId) return
+      setBrowse((b) => ({
+        ...b,
+        reserveId: o.objectId,
+        message: null,
+        error: null,
+      }))
+      try {
+        const res = await fetch("/api/mission/reserve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            obsId: o.obsId,
+            domeId: o.domeId,
+            telescopeId: o.telescopeId,
+            scheduledMissionId: o.scheduledMissionId,
+            missionStart: o.missionStart,
+            callSource: "bySlooh1000V4",
+            slotType: o.slotType,
+            object: {
+              objectId: o.objectId,
+              objectTitle: o.objectTitle,
+              objectType: o.objectType,
+              objectIconURL: o.objectIconURL,
+            },
+          }),
+        })
+        const json = await res.json()
+        if (json.error) {
+          setBrowse((b) => ({ ...b, reserveId: null, error: json.error }))
+        } else {
+          setBrowse((b) => ({
+            ...b,
+            reserveId: null,
+            message: `Reserved ${o.objectTitle ?? "mission"} ${formatDate(o.missionStart!)} ${formatTime(o.missionStart!)}`,
+          }))
+          fetchMissions()
+          fetchLimits()
+          fetchSlots()
+        }
+      } catch (e) {
+        setBrowse((b) => ({
+          ...b,
+          reserveId: null,
+          error: e instanceof Error ? e.message : "reservation failed",
+        }))
+      }
+    },
+    [fetchMissions, fetchLimits, fetchSlots],
+  )
+
+  useEffect(() => {
+    if (!active) return
+    fetchBrowseCategories()
+  }, [active, fetchBrowseCategories])
+
+  useEffect(() => {
+    if (!active) return
+    if (browse.catType) fetchBrowseObjects(browse.catType)
+  }, [active, browse.catType, fetchBrowseObjects])
+
   const nowSec = Math.floor(now / 1000)
   const canReserve = limits?.allowMissionReservation ?? false
   const canReserveAdvanced =
@@ -447,57 +589,96 @@ export default function MissionsPanel({
                 <p className="text-[10px] leading-relaxed text-red-300">{planner.error}</p>
               ) : null}
               <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={planner.q}
-                  onChange={(e) => setPlanner((p) => ({ ...p, q: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === "Enter") searchObjects(planner.teleUniqueId ?? "", planner.q) }}
-                  placeholder="Search Slooh 1000 objects…"
-                  className="min-w-0 flex-1 border border-border bg-card px-1.5 py-1 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary"
-                />
-                <button
-                  type="button"
-                  onClick={() => searchObjects(planner.teleUniqueId ?? "", planner.q)}
-                  disabled={planner.searching || !planner.q.trim()}
-                  className="flex items-center gap-1 border border-border bg-card px-1.5 py-1 text-[9px] tracking-wider text-muted-foreground uppercase transition-colors hover:border-primary hover:text-foreground disabled:cursor-default disabled:opacity-50"
-                >
-                  {planner.searching ? (
-                    <RefreshCw className="size-3 animate-spin" />
-                  ) : (
-                    <Search className="size-3" />
-                  )}
-                </button>
+                {canReserveAdvanced ? (
+                  <>
+                    <input
+                      type="text"
+                      value={planner.q}
+                      onChange={(e) => setPlanner((p) => ({ ...p, q: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === "Enter") searchObjects(planner.teleUniqueId ?? "", planner.q) }}
+                      placeholder="Search Slooh 1000 objects…"
+                      className="min-w-0 flex-1 border border-border bg-card px-1.5 py-1 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => searchObjects(planner.teleUniqueId ?? "", planner.q)}
+                      disabled={planner.searching || !planner.q.trim()}
+                      className="flex items-center gap-1 border border-border bg-card px-1.5 py-1 text-[9px] tracking-wider text-muted-foreground uppercase transition-colors hover:border-primary hover:text-foreground disabled:cursor-default disabled:opacity-50"
+                    >
+                      {planner.searching ? (
+                        <RefreshCw className="size-3 animate-spin" />
+                      ) : (
+                        <Search className="size-3" />
+                      )}
+                    </button>
+                  </>
+                ) : null}
+                {!canReserveAdvanced ? (
+                  <select
+                    value={browse.catType}
+                    onChange={(e) => setBrowse((b) => ({ ...b, catType: e.target.value }))}
+                    className="min-w-0 flex-1 border border-border bg-card px-1.5 py-1 text-[11px] text-foreground outline-none focus:border-primary"
+                  >
+                    <option value="">Select object category…</option>
+                    {browse.cats.map((c) => (
+                      <option key={c.typeName} value={c.typeName}>{c.displayName}</option>
+                    ))}
+                  </select>
+                ) : null}
               </div>
-              {planner.results.length > 0 ? (
-                <ul className="flex max-h-28 flex-col overflow-y-auto">
-                  {planner.results.map((o) => (
-                    <li key={o.objectId}>
-                      <button
-                        type="button"
-                        onClick={() => setPlanner((p) => ({ ...p, selected: o, error: null }))}
-                        className={cn(
-                          "flex w-full items-center justify-between gap-2 border-t border-border/60 px-1 py-1 text-left text-[10px] transition-colors hover:text-foreground",
-                          planner.selected?.objectId === o.objectId ? "bg-primary/10 text-foreground" : "text-muted-foreground",
-                        )}
-                      >
-                        <span className="truncate">{o.objectTitle}</span>
-                        <span className="shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground/60">
-                          {o.objectConstellation ?? o.objectType ?? ""}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+              {browse.busy ? (
+                <p className="text-[10px] text-muted-foreground">searching…</p>
+              ) : null}
+              {browse.error ? (
+                <p className="text-[10px] text-red-300">{browse.error}</p>
+              ) : null}
+              {browse.message ? (
+                <p className="text-[10px] text-emerald-300">{browse.message}</p>
+              ) : null}
+              {browse.catType && browse.objs.length > 0 ? (
+                <ul className="flex max-h-48 flex-col overflow-y-auto">
+                  {browse.objs
+                    .filter((o) => o.missionAvailable)
+                    .map((o) => (
+                      <li key={o.objectId} className="flex items-center justify-between gap-2 border-t border-border/60 py-1">
+                        <div className="min-w-0">
+                          <p className="truncate text-[10px] text-foreground">
+                            {o.objectTitle}
+                          </p>
+                          <p className="font-mono text-[9px] tabular-nums text-muted-foreground/70">
+                            {formatDate(o.missionStart!)} {formatTime(o.missionStart!)} · {o.telescopeName ?? "—"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => reserveSlooh1000(o)}
+                          disabled={browse.reserveId === o.objectId}
+                          className="shrink-0 border px-1.5 py-1 text-[9px] tracking-wider uppercase transition-colors hover:bg-primary disabled:cursor-default disabled:opacity-60"
+                        >
+                          {browse.reserveId === o.objectId
+                            ? "Reserving…"
+                            : "Reserve"
+                          }
+                        </button>
+                      </li>
+                    ))}
                 </ul>
+              ) : null}
+              {browse.catType && browse.objs.length === 0 ? (
+                <p className="text-[9px] text-amber-300/90">no missions available for this category right now</p>
+              ) : null}
+              {browse.catType && !browse.objs.length ? (
+                <p className="text-[9px] text-muted-foreground">select an object category to browse missions</p>
               ) : null}
               {planner.selected ? (
                 <div className="flex flex-col gap-1">
-                  {canReserveAdvanced ? (
-                    <>
-                      <select
-                        value={planner.teleUniqueId ?? ""}
-                        onChange={(e) => setPlanner((p) => ({ ...p, teleUniqueId: e.target.value, slot: null }))}
-                        className="border border-border bg-card px-1.5 py-1 text-[10px] text-foreground outline-none focus:border-primary"
-                      >
+              {canReserveAdvanced ? (
+                <>
+                  <select
+                    value={planner.teleUniqueId ?? ""}
+                    onChange={(e) => setPlanner((p) => ({ ...p, teleUniqueId: e.target.value, slot: null }))}
+                    className="border border-border bg-card px-1.5 py-1 text-[10px] text-foreground outline-none focus:border-primary"
+                  >
                         <option value="">Select telescope</option>
                         {telescopes
                           .filter((t) => {
@@ -573,12 +754,13 @@ export default function MissionsPanel({
                         )
                         const autoSlot = allReservable[0]
                         if (!autoSlot) {
-                          return <p className="text-[9px] leading-relaxed text-amber-300/90">no reservable slots on this plan right now</p>
+                          return <p className="text-[9px] leading-relaxed text-amber-300/90">select an object category to browse missions</p>
                         }
                         return null
                       })()}
                     </>
                   )}
+                  {canReserveAdvanced ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -617,6 +799,7 @@ export default function MissionsPanel({
                   >
                     {planner.reserving ? "Reserving…" : "Reserve Mission"}
                   </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>

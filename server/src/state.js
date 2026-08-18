@@ -32,6 +32,12 @@ export const MISSION_DATES_TTL = 10 * 60 * 1000;
 export const missionSlotsCache = new Map();
 export const MISSION_SLOTS_TTL = 90 * 1000;
 
+export const slooh1000CategoriesCache = new Map();
+export const SLOOH1000_CATEGORIES_TTL = 10 * 60 * 1000;
+
+export const slooh1000ObjectsCache = new Map();
+export const SLOOH1000_OBJECTS_TTL = 90 * 1000;
+
 
 export const alertsCache = new Map();
 export const ALERTS_TTL = 60 * 1000;
