@@ -26,10 +26,17 @@ export function handleSseProxy(req, res, url, pathname) {
           (frame.scheduledMissionID || "") + ":" + (frame.imageID || "");
         if (sent.has(key)) continue;
         sent.add(key);
-        res.write("id: " + key + "\ndata: " + JSON.stringify(frame) + "\n\n");
+        try {
+          res.write("id: " + key + "\ndata: " + JSON.stringify(frame) + "\n\n");
+        } catch {
+          ac.abort();
+          return;
+        }
       }
     } catch (e) {
-      res.write("event: error\ndata: " + e.message + "\n\n");
+      try {
+        res.write("event: error\ndata: " + e.message + "\n\n");
+      } catch {}
     }
     res.end();
   })();

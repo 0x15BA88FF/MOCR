@@ -219,8 +219,17 @@ function handle(req, res, url, pathname) {
 }
 
 setInterval(() => {
-  for (const res of subscribers) res.write(": ping\n\n");
+  for (const res of subscribers) {
+    try {
+      res.write(": ping\n\n");
+    } catch {
+      subscribers.delete(res);
+    }
+  }
 }, 25_000);
+
+process.on("uncaughtException", (e) => log("uncaught exception:", e.message));
+process.on("unhandledRejection", (e) => log("unhandled rejection:", e.message));
 
 server.listen(PORT, async () => {
   log("slooh proxy listening on http://localhost:" + PORT);

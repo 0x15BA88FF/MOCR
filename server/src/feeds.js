@@ -49,7 +49,13 @@ async function* sloohFeed(system, signal) {
 
 function broadcast(payload) {
   const text = "data: " + JSON.stringify(payload) + "\n\n";
-  for (const res of subscribers) res.write(text);
+  for (const res of subscribers) {
+    try {
+      res.write(text);
+    } catch {
+      subscribers.delete(res);
+    }
+  }
 }
 
 function ensureFeed(t) {

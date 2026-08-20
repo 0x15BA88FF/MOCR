@@ -10,23 +10,28 @@ export function handleEvents(req, res, url, pathname) {
     Connection: "keep-alive",
     ...CORS,
   });
-  res.write("retry: 5000\n\n");
-  for (const [uid, frame] of latest) {
-    const t = telescopeById.get(uid);
-    res.write(
-      "data: " +
-        JSON.stringify({
-          type: "frame",
-          telescopeId: t ? t.telescopeId : null,
-          teleUniqueId: uid,
-          frame,
-          missionTitle: t
-            ? getMissionTitleSync(t, frame.scheduledMissionID)
-            : null,
-        }) +
-        "\n\n",
-    );
+  try {
+    res.write("retry: 5000\n\n");
+    for (const [uid, frame] of latest) {
+      const t = telescopeById.get(uid);
+      res.write(
+        "data: " +
+          JSON.stringify({
+            type: "frame",
+            telescopeId: t ? t.telescopeId : null,
+            teleUniqueId: uid,
+            frame,
+            missionTitle: t
+              ? getMissionTitleSync(t, frame.scheduledMissionID)
+              : null,
+          }) +
+          "\n\n",
+      );
+    }
+    subscribers.add(res);
+  } catch {
+    res.end();
+    return;
   }
-  subscribers.add(res);
   req.on("close", () => subscribers.delete(res));
 }
